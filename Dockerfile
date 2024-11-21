@@ -7,8 +7,11 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any needed packages
-RUN pip install -r requirements.txt
+# Install required Python packages
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install pytest explicitly
+RUN pip install --no-cache-dir pytest
 
 # Make port 80 available to the world outside this container
 EXPOSE 80
