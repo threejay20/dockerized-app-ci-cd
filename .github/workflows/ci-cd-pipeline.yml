@@ -35,7 +35,7 @@ jobs:
 
       # Step 5: Build Docker Image
       - name: Build Docker Image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
+        run: docker build -t 3jay20/my-app:${{ github.sha }} .
 
       # Step 6: Verify Docker Image
       - name: Verify Docker Image
@@ -43,11 +43,11 @@ jobs:
 
       # Step 7: Run Tests
       - name: Run Tests
-        run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
+        run: docker run --rm 3jay20/my-app:${{ github.sha }} pytest
 
       # Step 8: Push Docker Image
       - name: Push Docker Image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+        run: docker push 3jay20/my-app:${{ github.sha }}
 
   deploy-to-kubernetes:
     needs: build-and-push
