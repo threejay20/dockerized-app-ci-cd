@@ -34,15 +34,6 @@ jobs:
       - name: Push Docker Image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
 
-      - name: Debug workspace contents
-        run: ls -la
-
-      - name: Debug Kubernetes context
-        run: kubectl config view
-
-      - name: Test Kubernetes connection
-        run: kubectl get nodes
-
       - name: Run Tests
         run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
 
