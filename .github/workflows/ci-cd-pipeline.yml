@@ -1,32 +1,64 @@
-name: CI/CD Pipeline for Kubernetes
+name: CI/CD Pipeline for Dockerized Application
 
 on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
-  deploy:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Write kubeconfig file
+      - name: Verify repository structure
+        run: ls -la
+
+      - name: Build Docker Image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
+
+      - name: List Docker Images
+        run: docker images
+
+      - name: Run Tests
+        run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
+
+  push-and-deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Verify repository structure
+        run: ls -la
+
+      - name: Set up kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG_SECRET }}" > kubeconfig
           export KUBECONFIG=$(pwd)/kubeconfig
-          echo "Kubeconfig written to: $KUBECONFIG"
-          echo "Contents of kubeconfig:"
-          cat kubeconfig
-      - name: Verify Kubeconfig
+          echo "Kubeconfig setup complete"
+
+      - name: Verify Kubernetes Context
         run: |
           kubectl config view
           kubectl get nodes
 
-      - name: Apply Kubernetes manifests
+      - name: Apply Kubernetes Deployment
         run: |
+          echo "Applying Kubernetes deployment"
           kubectl apply -f k8s-deployment.yaml
-        env:
-          KUBECONFIG: ${{ secrets.KUBECONFIG_SECRET }}
+          kubectl get pods
+          kubectl get services
+
+      - name: Debug Deployment Logs
+        run: |
+          kubectl describe pods
+          kubectl logs -l app=my-app
