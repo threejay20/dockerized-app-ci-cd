@@ -1,4 +1,4 @@
-name: CI/CD Pipeline with Minikube
+name: CI/CD Pipeline for Dockerized Application
 
 on:
   push:
@@ -13,57 +13,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y conntrack curl golang-go
-          curl -LO https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.31.0/crictl-v1.31.0-linux-amd64.tar.gz
-          sudo tar zxvf crictl-v1.31.0-linux-amd64.tar.gz -C /usr/local/bin
-
-      - name: Install cri-dockerd
-        run: |
-          git clone https://github.com/Mirantis/cri-dockerd.git
-          cd cri-dockerd
-          mkdir bin
-          go build -o bin/cri-dockerd
-          sudo mv bin/cri-dockerd /usr/local/bin/
-          cd ..
-          rm -rf cri-dockerd
-
-      - name: Install Minikube
-        run: |
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          sudo install minikube-linux-amd64 /usr/local/bin/minikube
-
-      - name: Start Minikube
-        run: |
-          sudo minikube start --driver=none
-          sudo minikube status
-
-      - name: Set Up kubectl
-        run: |
-          echo "Setting up kubectl configuration"
-          sudo minikube update-context
-          kubectl version --client
-          kubectl cluster-info
+      - name: Verify repository structure
+        run: ls -la
 
       - name: Build Docker Image
-        id: build-image
-        run: |
-          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
-          docker build -t $IMAGE_NAME .
-          docker images
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
 
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+      - name: List Docker Images
+        run: docker images
 
       - name: Run Tests
-        run: |
-          docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
+        run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
 
   push-and-deploy:
     needs: build-and-test
@@ -71,43 +34,31 @@ jobs:
     if: success()
 
     steps:
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y conntrack curl golang-go
-          curl -LO https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.31.0/crictl-v1.31.0-linux-amd64.tar.gz
-          sudo tar zxvf crictl-v1.31.0-linux-amd64.tar.gz -C /usr/local/bin
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Install cri-dockerd
-        run: |
-          git clone https://github.com/Mirantis/cri-dockerd.git
-          cd cri-dockerd
-          mkdir bin
-          go build -o bin/cri-dockerd
-          sudo mv bin/cri-dockerd /usr/local/bin/
-          cd ..
-          rm -rf cri-dockerd
+      - name: Verify repository structure
+        run: ls -la
 
-      - name: Install Minikube
+      - name: Set up kubeconfig
         run: |
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          echo "${{ secrets.KUBECONFIG_SECRET }}" > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+          echo "Kubeconfig setup complete"
 
-      - name: Start Minikube
+      - name: Verify Kubernetes Context
         run: |
-          sudo minikube start --driver=none
-          sudo minikube status
+          kubectl config view
+          kubectl get nodes
 
-      - name: Set Up kubectl
+      - name: Apply Kubernetes Deployment
         run: |
-          echo "Setting up kubectl configuration"
-          sudo minikube update-context
-          kubectl version --client
-          kubectl cluster-info
-
-      - name: Deploy to Kubernetes
-        run: |
-          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}|" k8s-deployment.yaml
+          echo "Applying Kubernetes deployment"
           kubectl apply -f k8s-deployment.yaml
           kubectl get pods
           kubectl get services
+
+      - name: Debug Deployment Logs
+        run: |
+          kubectl describe pods
+          kubectl logs -l app=my-app
