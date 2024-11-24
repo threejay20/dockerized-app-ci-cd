@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          image: 3jay20/my-app:latest
+          image: 3jay20/my-app:65c67316eb2223ae38c0fb9dbd7e5fe901f34282
           ports:
             - containerPort: 80
 
