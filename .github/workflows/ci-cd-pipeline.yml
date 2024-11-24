@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Dockerized Application
+name: CI/CD Pipeline for Dockerized Application with Minikube
 
 on:
   push:
@@ -16,17 +16,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Verify repository structure
-        run: ls -la
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+      - name: Start Minikube
+        run: |
+          sudo minikube start --driver=none
+          sudo minikube status
+
+      - name: Set Up kubectl
+        run: |
+          echo "Setting up kubectl configuration"
+          sudo minikube update-context
+          kubectl version --client
+          kubectl cluster-info
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
+        id: build-image
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME .
+          docker images
 
-      - name: List Docker Images
-        run: docker images
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
 
       - name: Run Tests
-        run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
+        run: |
+          docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
 
   push-and-deploy:
     needs: build-and-test
@@ -34,31 +60,32 @@ jobs:
     if: success()
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Verify repository structure
-        run: ls -la
-
-      - name: Set up kubeconfig
+      - name: Install Minikube
         run: |
-          echo "${{ secrets.KUBECONFIG_SECRET }}" > kubeconfig
-          export KUBECONFIG=$(pwd)/kubeconfig
-          echo "Kubeconfig setup complete"
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-      - name: Verify Kubernetes Context
+      - name: Start Minikube
         run: |
-          kubectl config view
-          kubectl get nodes
+          sudo minikube start --driver=none
+          sudo minikube status
 
-      - name: Apply Kubernetes Deployment
+      - name: Set Up kubectl
         run: |
-          echo "Applying Kubernetes deployment"
+          echo "Setting up kubectl configuration"
+          sudo minikube update-context
+          kubectl version --client
+          kubectl cluster-info
+
+      - name: Pull and Retag Docker Image
+        run: |
+          docker pull ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+          docker tag ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/my-app:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-app:latest
+
+      - name: Deploy to Kubernetes
+        run: |
+          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}|" k8s-deployment.yaml
           kubectl apply -f k8s-deployment.yaml
           kubectl get pods
           kubectl get services
-
-      - name: Debug Deployment Logs
-        run: |
-          kubectl describe pods
-          kubectl logs -l app=my-app
