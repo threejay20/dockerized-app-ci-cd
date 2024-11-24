@@ -31,6 +31,18 @@ jobs:
       - name: List Docker Images
         run: docker images
 
+      - name: Push Docker Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+
+      - name: Debug workspace contents
+        run: ls -la
+
+      - name: Debug Kubernetes context
+        run: kubectl config view
+
+      - name: Test Kubernetes connection
+        run: kubectl get nodes
+
       - name: Run Tests
         run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
 
@@ -46,17 +58,8 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Push Docker Image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
-
-      - name: Debug workspace contents
-        run: ls -la
-
-      - name: Debug Kubernetes context
-        run: kubectl config view
-
-      - name: Test Kubernetes connection
-        run: kubectl get nodes
+      - name: Pull Docker Image
+        run: docker pull ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
 
       - name: Set up kubeconfig
         run: |
@@ -64,9 +67,7 @@ jobs:
           export KUBECONFIG=kubeconfig
 
       - name: Deploy to Kubernetes
-        run: |
-          echo "Applying Kubernetes deployment..."
-          kubectl apply -f k8s-deployment.yaml
+        run: kubectl apply -f k8s-deployment.yaml
 
       - name: Verify Deployment
         run: kubectl get pods
