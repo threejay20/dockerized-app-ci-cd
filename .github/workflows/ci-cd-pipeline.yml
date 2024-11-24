@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Dockerized Application
+name: CI/CD Pipeline with Minikube
 
 on:
   push:
@@ -13,20 +13,64 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Verify repository structure
-        run: ls -la
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y conntrack curl
+
+      - name: Install Latest Go
+        run: |
+          wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+          echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+          source ~/.bashrc
+          go version
+
+      - name: Install cri-dockerd
+        run: |
+          git clone https://github.com/Mirantis/cri-dockerd.git
+          cd cri-dockerd
+          mkdir bin
+          /usr/local/go/bin/go build -o bin/cri-dockerd
+          sudo mv bin/cri-dockerd /usr/local/bin/
+          cd ..
+          rm -rf cri-dockerd
+
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+      - name: Start Minikube
+        run: |
+          sudo minikube start --driver=none
+          sudo minikube status
+
+      - name: Set Up kubectl
+        run: |
+          echo "Setting up kubectl configuration"
+          sudo minikube update-context
+          kubectl version --client
+          kubectl cluster-info
 
       - name: Build Docker Image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
+        id: build-image
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME .
+          docker images
 
-      - name: List Docker Images
-        run: docker images
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
 
       - name: Run Tests
-        run: docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
+        run: |
+          docker run --rm ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} pytest
 
   push-and-deploy:
     needs: build-and-test
@@ -34,31 +78,50 @@ jobs:
     if: success()
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Verify repository structure
-        run: ls -la
-
-      - name: Set up kubeconfig
+      - name: Install Dependencies
         run: |
-          echo "${{ secrets.KUBECONFIG_SECRET }}" > kubeconfig
-          export KUBECONFIG=$(pwd)/kubeconfig
-          echo "Kubeconfig setup complete"
+          sudo apt-get update
+          sudo apt-get install -y conntrack curl
 
-      - name: Verify Kubernetes Context
+      - name: Install Latest Go
         run: |
-          kubectl config view
-          kubectl get nodes
+          wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+          echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+          source ~/.bashrc
+          go version
 
-      - name: Apply Kubernetes Deployment
+      - name: Install cri-dockerd
         run: |
-          echo "Applying Kubernetes deployment"
+          git clone https://github.com/Mirantis/cri-dockerd.git
+          cd cri-dockerd
+          mkdir bin
+          /usr/local/go/bin/go build -o bin/cri-dockerd
+          sudo mv bin/cri-dockerd /usr/local/bin/
+          cd ..
+          rm -rf cri-dockerd
+
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+      - name: Start Minikube
+        run: |
+          sudo minikube start --driver=none
+          sudo minikube status
+
+      - name: Set Up kubectl
+        run: |
+          echo "Setting up kubectl configuration"
+          sudo minikube update-context
+          kubectl version --client
+          kubectl cluster-info
+
+      - name: Deploy to Kubernetes
+        run: |
+          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}|" k8s-deployment.yaml
           kubectl apply -f k8s-deployment.yaml
           kubectl get pods
           kubectl get services
-
-      - name: Debug Deployment Logs
-        run: |
-          kubectl describe pods
-          kubectl logs -l app=my-app
