@@ -16,8 +16,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Verify repository structure
-        run: ls -la
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Image
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
@@ -34,31 +40,34 @@ jobs:
     if: success()
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Verify repository structure
-        run: ls -la
+      - name: Push Docker Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
 
       - name: Set up kubeconfig
         run: |
-          echo "${{ secrets.KUBECONFIG_SECRET }}" > kubeconfig
+          echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 --decode > kubeconfig
           export KUBECONFIG=$(pwd)/kubeconfig
           echo "Kubeconfig setup complete"
+        shell: bash
 
-      - name: Verify Kubernetes Context
+      - name: Debug Kubeconfig
         run: |
+          echo "=== KUBECONFIG CONTENT ==="
+          cat kubeconfig
+          echo "=== END KUBECONFIG ==="
           kubectl config view
           kubectl get nodes
 
-      - name: Apply Kubernetes Deployment
+      - name: Deploy to Kubernetes
         run: |
-          echo "Applying Kubernetes deployment"
           kubectl apply -f k8s-deployment.yaml
-          kubectl get pods
-          kubectl get services
+          kubectl rollout status deployment/my-app
 
-      - name: Debug Deployment Logs
-        run: |
-          kubectl describe pods
-          kubectl logs -l app=my-app
+      - name: Verify Deployment
+        run: kubectl get pods
