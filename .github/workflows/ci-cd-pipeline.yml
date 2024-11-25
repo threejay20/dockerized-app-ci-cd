@@ -17,30 +17,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Install Minikube
-      - name: Install Minikube
-        run: |
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          sudo install minikube-linux-amd64 /usr/local/bin/minikube
-
-      # Step 3: Install cri-dockerd Dependencies
-      - name: Install cri-dockerd Dependencies
+      # Step 2: Install Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y conntrack curl wget
+          sudo apt-get install -y conntrack curl wget tar
 
-      # Step 4: Install Go
-      - name: Install Latest Go
+      # Step 3: Install Go
+      - name: Install Specific Version of Go
         run: |
-          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text)
-          wget https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz
+          GO_VERSION="1.21.1" # Replace with the desired version
+          wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
           sudo rm -rf /usr/local/go
-          sudo tar -C /usr/local -xzf ${GO_VERSION}.linux-amd64.tar.gz
+          sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
           echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-          source ~/.bashrc
+          export PATH=$PATH:/usr/local/go/bin
           go version
 
-      # Step 5: Install cri-dockerd
+      # Step 4: Install cri-dockerd
       - name: Install cri-dockerd
         run: |
           git clone https://github.com/Mirantis/cri-dockerd.git
@@ -50,6 +44,12 @@ jobs:
           sudo mv bin/cri-dockerd /usr/local/bin/
           cd ..
           rm -rf cri-dockerd
+
+      # Step 5: Install Minikube
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
       # Step 6: Start Minikube
       - name: Start Minikube
