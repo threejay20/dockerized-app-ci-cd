@@ -14,33 +14,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Set Up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      # Step 3: Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Step 4: Build and Push Docker Image
-      - name: Build Docker Image
+      # Step 2: Install Necessary Tools
+      - name: Install Dependencies
         run: |
-          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app
-          GIT_SHA=${{ github.sha }}
-          docker build -t $IMAGE_NAME:$GIT_SHA .
-          docker push $IMAGE_NAME:$GIT_SHA
-          docker tag $IMAGE_NAME:$GIT_SHA $IMAGE_NAME:latest
-          docker push $IMAGE_NAME:latest
-
-      # Step 5: Install Dependencies for Minikube and Kubernetes
-      - name: Install Minikube and Dependencies
-        run: |
-          # Install necessary tools
           sudo apt-get update
-          sudo apt-get install -y conntrack curl wget containernetworking-plugins
+          sudo apt-get install -y conntrack curl wget containernetworking-plugins cri-tools
 
           # Install Minikube
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -65,20 +43,25 @@ jobs:
           cd ..
           rm -rf cri-dockerd
 
-      # Step 6: Start Minikube
+      # Step 3: Start Minikube
       - name: Start Minikube
         run: |
           sudo minikube start --driver=none
           sudo minikube update-context
 
-      # Step 7: Apply Kubernetes Deployment
+      # Step 4: Build Docker Image
+      - name: Build Docker Image
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app
+          GIT_SHA=${{ github.sha }}
+          docker build -t $IMAGE_NAME:$GIT_SHA .
+          docker push $IMAGE_NAME:$GIT_SHA
+          docker tag $IMAGE_NAME:$GIT_SHA $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:latest
+
+      # Step 5: Deploy to Kubernetes
       - name: Deploy to Kubernetes
         run: |
-          # Verify Minikube is running
-          sudo minikube status
-
-          # Export kubeconfig
-          sudo minikube update-context
           export KUBECONFIG=$(sudo minikube kubeconfig)
 
           # Apply Kubernetes manifests
@@ -87,7 +70,7 @@ jobs:
           # Check Deployment Status
           kubectl rollout status deployment/my-app
 
-      # Step 8: Verify Deployment
+      # Step 6: Verify Deployment
       - name: Verify Kubernetes Deployment
         run: |
           kubectl get pods
