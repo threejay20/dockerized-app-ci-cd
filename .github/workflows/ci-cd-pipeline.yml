@@ -21,15 +21,26 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y conntrack curl wget tar socat
+          sudo apt-get install -y conntrack curl wget tar socat build-essential
 
-      # Step 3: Install cri-docker
+      # Step 3: Install Go
+      - name: Install Go
+        run: |
+          GO_VERSION=1.21.1
+          curl -LO https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+          sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
+          echo "export PATH=$PATH:/usr/local/go/bin" >> $HOME/.bashrc
+          echo "export PATH=$PATH:/usr/local/go/bin" >> $GITHUB_ENV
+          export PATH=$PATH:/usr/local/go/bin
+          go version
+
+      # Step 4: Install cri-docker
       - name: Install cri-docker
         run: |
           git clone https://github.com/Mirantis/cri-dockerd.git
           cd cri-dockerd
           mkdir bin
-          /usr/local/go/bin/go build -o bin/cri-dockerd
+          go build -o bin/cri-dockerd
           sudo mv bin/cri-dockerd /usr/local/bin/
           sudo cp -a packaging/systemd/* /etc/systemd/system
           sudo systemctl daemon-reload
@@ -39,43 +50,43 @@ jobs:
           rm -rf cri-dockerd
           sudo systemctl status cri-docker.socket
 
-      # Step 4: Install Minikube
+      # Step 5: Install Minikube
       - name: Install Minikube
         run: |
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-      # Step 5: Start Minikube
+      # Step 6: Start Minikube
       - name: Start Minikube
         run: |
           sudo minikube start --driver=none
           sudo minikube status
 
-      # Step 6: Log in to Docker Hub
+      # Step 7: Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Step 7: Build Docker Image
+      # Step 8: Build Docker Image
       - name: Build Docker Image
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} .
 
-      # Step 8: Push Docker Image
+      # Step 9: Push Docker Image
       - name: Push Docker Image
         run: |
           docker push ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }}
           docker tag ${{ secrets.DOCKER_USERNAME }}/my-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/my-app:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/my-app:latest
 
-      # Step 9: Apply Kubernetes Deployment
+      # Step 10: Apply Kubernetes Deployment
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f k8s-deployment.yaml
           kubectl rollout status deployment/my-app
 
-      # Step 10: Verify Kubernetes Pods and Services
+      # Step 11: Verify Kubernetes Pods and Services
       - name: Verify Deployment
         run: |
           kubectl get pods
