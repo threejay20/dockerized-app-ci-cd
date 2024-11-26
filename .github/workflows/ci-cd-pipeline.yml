@@ -46,8 +46,8 @@ jobs:
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-          # Install Go (needed for cri-dockerd)
-          GO_VERSION="1.20.7"
+          # Install Compatible Go Version
+          GO_VERSION="1.21.0"
           curl -LO https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
           sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
           export PATH=$PATH:/usr/local/go/bin
