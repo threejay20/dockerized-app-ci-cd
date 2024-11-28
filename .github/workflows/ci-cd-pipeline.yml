@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Windows/WSL2
+name: CI/CD Pipeline with Minikube on WSL2
 
 on:
   push:
@@ -6,68 +6,66 @@ on:
       - master
 
 jobs:
-  build-and-deploy:
+  build-deploy:
     runs-on: windows-latest
 
     steps:
-      # Step 1: Setup Environment
-      - name: Setup WSL2 and Tools
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install and Update WSL
         run: |
-          # Update WSL and Install Ubuntu
+          wsl --install -d Ubuntu || echo "Ubuntu already installed"
           wsl --update
-          wsl --install -d Ubuntu
+          wsl -l -v
 
-          # Inside WSL (Ubuntu): Install Dependencies
-          sudo apt-get update
-          sudo apt-get install -y curl wget conntrack
-
-          # Install containernetworking-plugins
-          CNI_VERSION="v1.2.0"
-          wget https://github.com/containernetworking/plugins/releases/download/$CNI_VERSION/cni-plugins-linux-amd64-$CNI_VERSION.tgz
-          sudo mkdir -p /opt/cni/bin
-          sudo tar -xvf cni-plugins-linux-amd64-$CNI_VERSION.tgz -C /opt/cni/bin
-          rm -f cni-plugins-linux-amd64-$CNI_VERSION.tgz
-
-          # Install cri-tools
-          CRICTL_VERSION="v1.25.0"
-          wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$CRICTL_VERSION/crictl-$CRICTL_VERSION-linux-amd64.tar.gz
-          sudo tar -xvf crictl-$CRICTL_VERSION-linux-amd64.tar.gz -C /usr/local/bin
-          rm -f crictl-$CRICTL_VERSION-linux-amd64.tar.gz
-
-          # Install Minikube
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-windows-amd64.exe
-          mv minikube-windows-amd64.exe minikube.exe
-          sudo install minikube.exe /usr/local/bin/minikube
-
-      # Step 2: Start Minikube
-      - name: Start Minikube
+      - name: Setup Dependencies in WSL
         run: |
-          sudo minikube start --driver=none
+          wsl -d Ubuntu -- bash -c "
+          sudo apt-get update &&
+          sudo apt-get install -y curl wget conntrack &&
+          CNI_VERSION='v1.2.0' &&
+          wget https://github.com/containernetworking/plugins/releases/download/\$CNI_VERSION/cni-plugins-linux-amd64-\$CNI_VERSION.tgz &&
+          sudo mkdir -p /opt/cni/bin &&
+          sudo tar -xvf cni-plugins-linux-amd64-\$CNI_VERSION.tgz -C /opt/cni/bin &&
+          rm -f cni-plugins-linux-amd64-\$CNI_VERSION.tgz &&
+          CRICTL_VERSION='v1.25.0' &&
+          wget https://github.com/kubernetes-sigs/cri-tools/releases/download/\$CRICTL_VERSION/crictl-\$CRICTL_VERSION-linux-amd64.tar.gz &&
+          sudo tar -xvf crictl-\$CRICTL_VERSION-linux-amd64.tar.gz -C /usr/local/bin &&
+          rm -f crictl-\$CRICTL_VERSION-linux-amd64.tar.gz &&
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 &&
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          "
+
+      - name: Start Minikube in WSL
+        run: |
+          wsl -d Ubuntu -- bash -c "
+          sudo minikube start --driver=none &&
           sudo minikube update-context
+          "
 
-      # Step 3: Build Docker Image
-      - name: Build Docker Image
+      - name: Build Docker Image and Push
         run: |
-          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app
-          GIT_SHA=${{ github.sha }}
-          docker build -t $IMAGE_NAME:$GIT_SHA .
-          docker push $IMAGE_NAME:$GIT_SHA
-          docker tag $IMAGE_NAME:$GIT_SHA $IMAGE_NAME:latest
-          docker push $IMAGE_NAME:latest
+          wsl -d Ubuntu -- bash -c "
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/my-app &&
+          GIT_SHA=${{ github.sha }} &&
+          docker build -t \$IMAGE_NAME:\$GIT_SHA . &&
+          docker push \$IMAGE_NAME:\$GIT_SHA &&
+          docker tag \$IMAGE_NAME:\$GIT_SHA \$IMAGE_NAME:latest &&
+          docker push \$IMAGE_NAME:latest
+          "
 
-      # Step 4: Deploy to Kubernetes
       - name: Deploy to Kubernetes
         run: |
-          export KUBECONFIG=$(sudo minikube kubeconfig)
-
-          # Apply Kubernetes manifests
-          kubectl apply -f k8s-deployment.yaml --validate=false
-
-          # Check Deployment Status
+          wsl -d Ubuntu -- bash -c "
+          export KUBECONFIG=\$(sudo minikube kubeconfig) &&
+          kubectl apply -f k8s-deployment.yaml &&
           kubectl rollout status deployment/my-app
+          "
 
-      # Step 5: Verify Deployment
       - name: Verify Kubernetes Deployment
         run: |
-          kubectl get pods
+          wsl -d Ubuntu -- bash -c "
+          kubectl get pods &&
           kubectl get services
+          "
